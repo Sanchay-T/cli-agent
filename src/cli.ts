@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { Command } from 'commander';
 import { consola } from 'consola';
 import { createRequire } from 'node:module';
