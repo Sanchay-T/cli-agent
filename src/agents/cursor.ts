@@ -23,17 +23,20 @@ type CursorAgent = {
 };
 
 export class CursorRunner implements AgentRunner {
-  private readonly apiKey: string;
   private readonly baseUrl = 'https://api.cursor.com/v0';
 
-  constructor() {
-    this.apiKey = process.env.CURSOR_API_KEY || '';
-  }
-
   checkEnv(): void {
-    if (!this.apiKey) {
+    if (!process.env.CURSOR_API_KEY) {
       throw new Error('CURSOR_API_KEY must be set to run the Cursor agent.');
     }
+  }
+
+  private getApiKey(): string {
+    const apiKey = process.env.CURSOR_API_KEY;
+    if (!apiKey) {
+      throw new Error('CURSOR_API_KEY must be set to run the Cursor agent.');
+    }
+    return apiKey;
   }
 
   private async apiRequest<T>(
@@ -42,8 +45,9 @@ export class CursorRunner implements AgentRunner {
     body?: unknown,
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
+    const apiKey = this.getApiKey();
     const headers: Record<string, string> = {
-      'Authorization': `Basic ${Buffer.from(`${this.apiKey}:`).toString('base64')}`,
+      'Authorization': `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`,
     };
 
     if (body) {
@@ -91,11 +95,16 @@ export class CursorRunner implements AgentRunner {
     return repoUrl;
   }
 
-  private async pushBaseBranch(worktreeDir: string, branch: string): Promise<void> {
+  private async pushBaseBranch(
+    worktreeDir: string,
+    localBranch: string,
+    remoteBranch: string,
+  ): Promise<void> {
     const git = simpleGit(worktreeDir);
 
-    // Push the current worktree state to create a base branch for Cursor
-    await git.push('origin', `${branch}:${branch}`, { '--force': null } as unknown as string[]);
+    // Push the current worktree state to a different remote branch name for Cursor to use as base
+    // Format: localBranch:remoteBranch pushes local branch to remote with different name
+    await git.push('origin', `${localBranch}:${remoteBranch}`, ['--force']);
   }
 
   private async pullCursorChanges(
@@ -181,7 +190,7 @@ export class CursorRunner implements AgentRunner {
       // Step 3: Push current worktree as base branch
       await appendScratchpadEntry(context.scratchpadPath, 'Pushing base branch to GitHub...');
       const baseBranch = `${context.branch}-base`;
-      await this.pushBaseBranch(context.dir, baseBranch);
+      await this.pushBaseBranch(context.dir, context.branch, baseBranch);
       await appendScratchpadEntry(context.scratchpadPath, `Base branch: ${baseBranch}`);
 
       // Step 4: Launch Cursor agent
