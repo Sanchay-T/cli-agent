@@ -96,32 +96,29 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
   consola.start(`Starting ob1 run with agents: ${selectedAgents.join(', ')} (taskId=${taskId})`);
   await logger.log({ event: 'start', taskId, agents: selectedAgents, message: options.message });
 
-  const agentContexts = await Promise.all(
-    selectedAgents.map(async (agent) => {
-      const branch = `agent/${agent}/${taskId}`;
-      const worktreeDir = path.join(workRoot, agent, taskId);
-      await createWorktree(repoDir, worktreeDir, branch, options.baseBranch);
+  const agentContexts: AgentContext[] = [];
+  for (const agent of selectedAgents) {
+    const branch = `agent/${agent}/${taskId}`;
+    const worktreeDir = path.join(workRoot, agent, taskId);
+    await createWorktree(repoDir, worktreeDir, branch, options.baseBranch);
 
-      const ob1Dir = path.join(worktreeDir, '.ob1');
-      await ensureDir(ob1Dir);
-      const scratchpadPath = path.join(ob1Dir, SCRATCHPAD_FILENAME);
-      const todoPath = path.join(ob1Dir, TODO_FILENAME);
-      await appendScratchpadEntry(scratchpadPath, `Task: ${options.message}`);
-      await appendTodo(todoPath, 'Initialise ob1 run', true);
+    const ob1Dir = path.join(worktreeDir, '.ob1');
+    await ensureDir(ob1Dir);
+    const scratchpadPath = path.join(ob1Dir, SCRATCHPAD_FILENAME);
+    const todoPath = path.join(ob1Dir, TODO_FILENAME);
+    await appendScratchpadEntry(scratchpadPath, `Task: ${options.message}`);
+    await appendTodo(todoPath, 'Initialise ob1 run', true);
 
-      const context: AgentContext = {
-        name: agent,
-        dir: worktreeDir,
-        branch,
-        prompt: options.message,
-        scratchpadPath,
-        todoPath,
-        taskId,
-      };
-
-      return context;
-    }),
-  );
+    agentContexts.push({
+      name: agent,
+      dir: worktreeDir,
+      branch,
+      prompt: options.message,
+      scratchpadPath,
+      todoPath,
+      taskId,
+    });
+  }
 
   const limit = pLimit(options.k);
   const executionSummaries: AgentExecutionSummary[] = [];
