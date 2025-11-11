@@ -8,8 +8,8 @@ import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js'
 
 export class QaRunner implements AgentRunner {
   checkEnv(): void {
-    if (!process.env.CLAUDE_API_KEY) {
-      throw new Error('CLAUDE_API_KEY must be set to run the QA agent.');
+    if (!process.env.ANTHROPIC_API_KEY && !process.env.CLAUDE_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY or CLAUDE_API_KEY must be set to run the QA agent.');
     }
   }
 
