@@ -111,6 +111,11 @@ export class CursorRunner implements AgentRunner {
     return response.json() as Promise<T>;
   }
 
+  private sanitizeUrl(url: string): string {
+    // Remove any embedded tokens from URLs for safe logging
+    return url.replace(/https:\/\/[^@]+@github\.com/, 'https://github.com');
+  }
+
   private async getRepositoryUrl(worktreeDir: string): Promise<string> {
     const git = simpleGit(worktreeDir);
     const remotes = await git.getRemotes(true);
@@ -129,6 +134,9 @@ export class CursorRunner implements AgentRunner {
 
     // Remove .git suffix
     repoUrl = repoUrl.replace(/\.git$/, '');
+
+    // Remove any embedded authentication tokens
+    repoUrl = this.sanitizeUrl(repoUrl);
 
     // Validate it's a GitHub URL
     if (!repoUrl.includes('github.com')) {
