@@ -447,13 +447,32 @@ Begin by running 'git diff HEAD~1' to discover what changed in this PR. Then pro
       consola.info('[qa] SDK query() returned, starting message stream...');
       await appendScratchpadEntry(context.scratchpadPath, 'SDK initialized, receiving messages...');
 
+      // ========== ULTRA-VERBOSE LOGGING FOR CI DEBUGGING ==========
+      let messageCount = 0;
+      let lastLogTime = Date.now();
+
+      // Heartbeat to prove process is alive
+      const heartbeatInterval = setInterval(() => {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        consola.info(`[qa] ❤️ HEARTBEAT at ${elapsed}s - Messages: ${messageCount}, Turn: ${turnCount}, Alive: true`);
+      }, 5000); // Every 5 seconds
+
       try {
+        consola.info('[qa] 🔄 Entering message loop...');
+
         for await (const message of result) {
+          messageCount++;
+          const loopStartTime = Date.now();
+          const elapsed = ((loopStartTime - startTime) / 1000).toFixed(1);
+
+          // Log EVERY message with detailed info
+          consola.info(`[qa] 📨 Message #${messageCount} at ${elapsed}s: type=${message.type}`);
+
           messages.push(message);
 
-          // Log each message type for debugging
-          if (turnCount === 0) {
-            consola.info(`[qa] First message received: type=${message.type}`);
+          // Extra verbose logging for first few messages
+          if (messageCount <= 5) {
+            consola.info(`[qa] 🔍 Message #${messageCount} details: type=${message.type}, hasContent=${!!(message as any).message?.content}`);
           }
 
         // Log assistant messages to scratchpad (truncated) and detailed logger

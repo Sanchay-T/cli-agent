@@ -193,7 +193,14 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
           changedFiles = changedFiles || (await git.diff(['--name-only', 'HEAD^', 'HEAD'])).split('\n').filter(Boolean).length;
 
           let prUrl: string | undefined;
-          if (!options.dryRun && repoInfo) {
+
+          // QA agents don't push/create PRs - they generate test artifacts that GitHub Actions uploads
+          const isQaAgent = context.name === 'qa';
+
+          if (isQaAgent) {
+            consola.info(`[${context.name}] QA agent completed - test artifacts ready for GitHub Actions to upload`);
+            await appendScratchpadEntry(context.scratchpadPath, 'QA agent completed: Test results and videos generated. GitHub Actions will upload artifacts.');
+          } else if (!options.dryRun && repoInfo) {
             spinner.text = `[${context.name}] pushing branch`;
             await pushBranch(context.dir, context.branch);
 
