@@ -1,0 +1,8 @@
+◐ Starting ob1 run with agents: qa (taskId=20251111113029.-dhw3)
+- [qa] preparing worktree
+ℹ [qa] Starting QA agent for PR review
+ℹ [mcp] No MCP config found; continuing without custom servers.
+✔ [qa] QA review completed in 54 turns
+ℹ [qa] Cost: $0.1980
+✔ [qa] completed
+ℹ qa → dry run

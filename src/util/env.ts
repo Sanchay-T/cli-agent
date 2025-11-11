@@ -71,8 +71,19 @@ export function assertAgentEnv(agents: string[]): void {
   // Always require GITHUB_TOKEN
   requiredKeys.add('GITHUB_TOKEN');
 
-  // Validate only the keys needed for selected agents
-  assertRequiredEnv(Array.from(requiredKeys) as RequiredEnvKey[]);
+  // Special handling for CLAUDE_API_KEY: accept ANTHROPIC_API_KEY as alternative
+  if (requiredKeys.has('CLAUDE_API_KEY')) {
+    if (!process.env.CLAUDE_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      throw new Error('Missing required environment variables: CLAUDE_API_KEY or ANTHROPIC_API_KEY');
+    }
+    // Remove CLAUDE_API_KEY from validation since we've already checked
+    requiredKeys.delete('CLAUDE_API_KEY');
+  }
+
+  // Validate only the remaining keys needed for selected agents
+  if (requiredKeys.size > 0) {
+    assertRequiredEnv(Array.from(requiredKeys) as RequiredEnvKey[]);
+  }
 }
 
 export async function runDoctor(): Promise<void> {

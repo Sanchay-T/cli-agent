@@ -8,8 +8,8 @@ import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js'
 
 export class ClaudeRunner implements AgentRunner {
   checkEnv(): void {
-    if (!process.env.CLAUDE_API_KEY) {
-      throw new Error('CLAUDE_API_KEY must be set to run the Claude agent.');
+    if (!process.env.CLAUDE_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      throw new Error('CLAUDE_API_KEY or ANTHROPIC_API_KEY must be set to run the Claude agent.');
     }
   }
 

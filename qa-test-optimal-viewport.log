@@ -1,0 +1,4 @@
+◐ Starting ob1 run with agents: qa (taskId=20251111114506.-wvlr)
+- [qa] preparing worktree
+ℹ [qa] Starting QA agent for PR review
+ℹ [mcp] No MCP config found; continuing without custom servers.
