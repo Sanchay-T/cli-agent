@@ -2,6 +2,7 @@ import { consola } from 'consola';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { appendScratchpadEntry, appendTodo } from '../util/fs.js';
+import { loadMcpServers } from '../util/mcp.js';
 import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js';
 
 export class ClaudeRunner implements AgentRunner {
@@ -43,6 +44,7 @@ Instructions:
 - Focus on writing clean, working code that fulfills the task requirements`;
 
       await appendScratchpadEntry(context.scratchpadPath, 'Starting Claude Agent SDK query...');
+      const mcpServers = await loadMcpServers(context.dir);
 
       // Start the query with appropriate options
       const result = query({
@@ -56,6 +58,7 @@ Instructions:
           maxTurns: 50, // Prevent infinite loops
           abortController,
           settingSources: [], // Don't load filesystem settings
+          mcpServers,
         },
       });
 

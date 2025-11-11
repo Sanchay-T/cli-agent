@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Shared MCP servers that Claude, Codex, and other agents can attach to. Replace ${env:VAR} placeholders via .env or shell variables.",
+  "servers": {
+    "shadcn-cli": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["shadcn@latest", "mcp"],
+      "env": {
+        "SHADCN_REGISTRY_URL": "${env:SHADCN_REGISTRY_URL|https://www.shadcn.io/api/mcp}",
+        "SHADCN_REGISTRY_TOKEN": "${env:SHADCN_REGISTRY_TOKEN|}"
+      }
+    },
+    "shadcn-cloud": {
+      "type": "http",
+      "url": "${env:SHADCN_REGISTRY_URL|https://www.shadcn.io/api/mcp}"
+    },
+    "supabase": {
+      "type": "stdio",
+      "command": "supabase-mcp-server",
+      "env": {
+        "QUERY_API_KEY": "${env:QUERY_API_KEY}",
+        "SUPABASE_PROJECT_REF": "${env:SUPABASE_PROJECT_REF}",
+        "SUPABASE_DB_PASSWORD": "${env:SUPABASE_DB_PASSWORD}",
+        "SUPABASE_REGION": "${env:SUPABASE_REGION|us-east-1}",
+        "SUPABASE_ACCESS_TOKEN": "${env:SUPABASE_ACCESS_TOKEN|}",
+        "SUPABASE_SERVICE_ROLE_KEY": "${env:SUPABASE_SERVICE_ROLE_KEY|}"
+      }
+    },
+    "codex-bridge": {
+      "type": "stdio",
+      "command": "codex",
+      "args": ["mcp-server"],
+      "env": {
+        "CODEX_APPROVAL_POLICY": "${env:CODEX_APPROVAL_POLICY|never}"
+      }
+    }
+  }
+}

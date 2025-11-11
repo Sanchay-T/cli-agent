@@ -40,6 +40,12 @@ npx ob1 -m "Refactor utils" -k 2 --dry
 
 Use `--repo` to target a different repository and `--base` to override the base branch. Additional optional flags include `--agents`, `--allow-dirty`, `--timeout-ms`, and `--work-root`.
 
+## MCP Integration
+
+- Shared server manifest lives in `config/mcp.config.json`. Populate `${env:VAR}` placeholders via `.env` (see `.env.example`).
+- Claude automatically loads these servers through `src/util/mcp.ts`; mirror the same definitions in `~/.codex/config.toml` so Codex/Claude share the tool surface.
+- Supported MCP providers (shadcn UI, Supabase, Codex bridge) plus setup notes are documented in `docs/MCP_GUIDE.md`.
+
 ## Development Notes
 
 - Agents are currently placeholder implementations that populate scratchpads and TODO ledgers. Replace the bodies of `src/agents/*.ts` with real SDK/API integrations in future stages.

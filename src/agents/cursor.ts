@@ -54,15 +54,57 @@ export class CursorRunner implements AgentRunner {
       headers['Content-Type'] = 'application/json';
     }
 
+    // Debug logging (only in verbose mode or when DEBUG env var is set)
+    if (process.env.DEBUG === 'cursor' || process.env.VERBOSE) {
+      consola.debug('[cursor] API Request:', {
+        method,
+        url,
+        headers: { ...headers, Authorization: '[REDACTED]' },
+        body: body ? JSON.stringify(body, null, 2) : undefined,
+      });
+    }
+
     const response = await fetch(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
 
+    // Log response details for debugging
+    if (process.env.DEBUG === 'cursor' || process.env.VERBOSE) {
+      const responseClone = response.clone();
+      const responseText = await responseClone.text();
+      consola.debug('[cursor] API Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseText,
+      });
+    }
+
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`Cursor API error (${response.status}): ${errorText}`);
+
+      // Enhanced error message with helpful hints
+      let errorMessage = `Cursor API error (${response.status}): ${errorText}`;
+
+      if (response.status === 403) {
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error?.includes('Storage mode is disabled')) {
+            errorMessage += '\n\n💡 How to fix:\n';
+            errorMessage += '   1. Open Cursor IDE\n';
+            errorMessage += '   2. Go to Settings → Privacy\n';
+            errorMessage += '   3. Disable "Privacy Mode" or enable "Storage Mode"\n';
+            errorMessage += '   4. Cloud Agents require data retention for operation\n';
+            errorMessage += '\n   Learn more: https://cursor.com/docs/cloud-agent';
+          }
+        } catch {
+          // Not JSON or parsing failed, keep original message
+        }
+      }
+
+      throw new Error(errorMessage);
     }
 
     return response.json() as Promise<T>;
