@@ -72,38 +72,192 @@ PHASE 3: PROJECT SETUP - Get It Running
 - Verify you can access the app
 - Keep server running in background for testing
 
-PHASE 4: TEST DESIGN - Plan Your Tests
-- Based on what you discovered in Phase 1, plan test scenarios
-- Cover all new user interactions and features
-- Consider edge cases and error states
-- Think through the happy path and failure paths
-- Plan assertions that prove the feature works
+PHASE 4: TEST DESIGN - Plan Comprehensive Workflow-Based Tests
 
-PHASE 5: TEST IMPLEMENTATION - Write Playwright Tests
-- Create a test file: tests/pr-feature.spec.ts
-- Write comprehensive tests using Playwright best practices:
-  * Use proper page navigation
-  * Use reliable selectors (data-testid preferred, then role, then text)
-  * Use proper waiting strategies (waitForSelector, waitForURL, etc.)
-  * NO arbitrary delays like page.waitForTimeout(5000)
-  * Add clear, descriptive test names
-  * Include proper assertions for UI elements and behavior
-  * Test both success and failure scenarios
+**CRITICAL: Design tests as USER JOURNEYS, not atomic test cases**
 
-Example pattern:
+Your goal: Create a small number of comprehensive test workflows that tell complete stories.
+
+Decision Framework (you decide based on feature complexity):
+1. **Analyze Feature Scope**:
+   - How many distinct user paths are there?
+   - What's the natural flow a user would follow?
+   - Which scenarios logically group together?
+
+2. **Plan Workflow Groups** (NOT individual assertions):
+   - Group related scenarios into complete user journeys
+   - Each workflow = one comprehensive video
+   - Aim for the MINIMUM number of workflows that provide MAXIMUM coverage
+
+3. **Determine Optimal Video Count** (YOU decide):
+   - Simple feature (1-2 pages, basic flow): Consider 2-3 workflows
+   - Medium feature (multiple pages, several interactions): Consider 3-5 workflows
+   - Complex feature (multi-step process, many states): Consider 4-6 workflows
+   - **Key principle**: Prefer fewer, longer videos over many short ones
+
+4. **Workflow Design Patterns**:
+
+   **Pattern A: Primary Journey** (the happy path)
+   - Complete end-to-end successful user flow
+   - Covers main feature functionality
+   - Shows all key UI elements in natural usage
+   - Example: "Complete Login and Dashboard Journey"
+
+   **Pattern B: Validation & Errors** (edge cases together)
+   - All error states and validation in ONE workflow
+   - Form validation, error messages, boundary conditions
+   - Example: "Form Validation and Error Handling"
+
+   **Pattern C: Advanced Features** (secondary functionality)
+   - Settings, preferences, admin features, etc.
+   - Group related secondary features together
+   - Example: "User Settings and Preferences"
+
+   **Pattern D: State Management** (auth, sessions, persistence)
+   - Login/logout, session handling, redirects
+   - Group authentication-related scenarios
+   - Example: "Authentication and Session Management"
+
+5. **Self-Check Your Plan**:
+   - ❓ Am I creating too many small, repetitive tests?
+   - ❓ Could these 3 tests be combined into 1 comprehensive workflow?
+   - ❓ Would a reviewer understand the feature from just these videos?
+   - ❓ Am I testing the same setup multiple times unnecessarily?
+   - ✅ Each workflow should tell a complete, reviewable story
+
+**OUTPUT**: A plan with 2-6 comprehensive workflow test suites (you decide the optimal number)
+
+PHASE 5: TEST IMPLEMENTATION - Write Workflow-Based Playwright Tests
+
+**Structure tests as COMPLETE USER JOURNEYS:**
+
+✅ **GOOD Example - Workflow-Based:**
 \`\`\`typescript
 import { test, expect } from '@playwright/test';
 
-test.describe('Feature Name', () => {
-  test('should allow user to perform action', async ({ page }) => {
-    await page.goto('http://localhost:PORT/entry.html');
-    await page.fill('[data-testid="email"]', 'test@example.com');
+test.describe('Complete User Journey - Primary Flow', () => {
+  test('should complete full login, dashboard interaction, and logout', async ({ page }) => {
+    // This ONE test = ONE comprehensive video showing entire feature
+
+    // Step 1: Navigate and verify login page loads
+    await page.goto('http://localhost:8000');
+    await expect(page.locator('h1')).toContainText('Login');
+    await expect(page.locator('#email')).toBeVisible();
+
+    // Step 2: Fill credentials and submit
+    await page.fill('#email', 'test@example.com');
+    await page.fill('#password', 'password123');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/success.html');
-    await expect(page.locator('.welcome-message')).toBeVisible();
+
+    // Step 3: Verify redirect and dashboard loads
+    await page.waitForURL('**/dashboard.html');
+    await expect(page.locator('.sidebar')).toBeVisible();
+    await expect(page.locator('.stats-card')).toHaveCount(4);
+
+    // Step 4: Test navigation functionality
+    await page.click('text=Analytics');
+    await expect(page.locator('.nav-item.active')).toContainText('Analytics');
+    await page.click('text=Settings');
+    await expect(page.locator('.nav-item.active')).toContainText('Settings');
+
+    // Step 5: Verify user info displays
+    await expect(page.locator('.user-email')).toContainText('test@example.com');
+
+    // Step 6: Complete logout and verify
+    await page.click('text=Logout');
+    await page.waitForURL('**/index.html');
+    await expect(page.locator('h1')).toContainText('Login');
+  });
+});
+
+test.describe('Form Validation and Error Handling', () => {
+  test('should handle all validation and error scenarios', async ({ page }) => {
+    // This ONE test = ONE video showing all error cases
+
+    await page.goto('http://localhost:8000');
+
+    // Test 1: Invalid email format (HTML5 validation)
+    await page.fill('#email', 'invalid-email');
+    await page.fill('#password', 'test123');
+    await page.click('button[type="submit"]');
+    // Verify HTML5 validation message appears
+
+    // Test 2: Empty fields
+    await page.fill('#email', '');
+    await page.fill('#password', '');
+    await page.click('button[type="submit"]');
+    // Verify required field validation
+
+    // Test 3: Wrong password
+    await page.fill('#email', 'test@example.com');
+    await page.fill('#password', 'wrongpassword');
+    await page.click('button[type="submit"]');
+    await expect(page.locator('.error-message')).toBeVisible();
+    await expect(page.locator('.error-message')).toContainText('Invalid');
   });
 });
 \`\`\`
+
+❌ **BAD Example - Atomic/Fragmented:**
+\`\`\`typescript
+// DO NOT DO THIS - creates too many small videos!
+test('should display login page', ...);         // Video 1
+test('should show email field', ...);           // Video 2
+test('should show password field', ...);        // Video 3
+test('should have submit button', ...);         // Video 4
+test('should allow login', ...);                // Video 5
+// Result: 5 short videos instead of 1 comprehensive one
+\`\`\`
+
+**Best Practices for Workflow Tests:**
+- Use descriptive names that explain the complete journey
+- Include multiple related assertions in each test
+- Think: "What story does this video tell?"
+- Each test should be 1-3 minutes of actual user interaction
+- Group setup/teardown to avoid repetition across videos
+- Use test.describe() to organize workflow groups
+
+**Video Recording**:
+- Each test() block = ONE video
+- Playwright automatically records with video settings in config
+- Your workflow grouping directly controls video count
+- Fewer test() blocks = fewer, more comprehensive videos
+
+**Video Quality & Pacing** (CRITICAL for reviewer experience):
+
+Videos are for HUMAN TESTERS to review. They must be watchable and clear.
+
+**Configuration** (Add to playwright.config.ts):
+- Set video size to HD: { width: 1280, height: 720 } (good balance of quality and content fit)
+- Match viewport to video size so content fills the frame
+- Enable trace: 'on' for detailed debugging
+- Example config structure to use:
+  use: {
+    baseURL,
+    trace: 'on',
+    screenshot: 'on',
+    video: { mode: 'on', size: { width: 1280, height: 720 } },
+    viewport: { width: 1280, height: 720 },
+    actionTimeout: 10000
+  }
+- Alternative for larger screens: 1366x768 (common laptop size)
+- Avoid 1920x1080 unless the app is specifically designed for large screens
+
+**Test Execution Pacing** (Add strategic waits for better video clarity):
+- After page navigation: await page.waitForLoadState('networkidle') or page.waitForTimeout(800)
+- After form submission: Small pause (500-800ms) before checking results
+- After clicks/interactions: Brief pause (300-500ms) to show state changes
+- Between test phases: Pause (500ms) to create visual separation
+- Goal: Reviewers should clearly see each action and its result
+- NOT too fast (reviewer can't follow) - NOT too slow (wastes time)
+- Sweet spot: Each significant action visible for 0.5-1 second
+
+Example pattern with good pacing:
+  1. Fill form field -> wait 300ms (let viewer see value)
+  2. Fill next field -> wait 300ms
+  3. Click submit -> wait 800ms (show submission and response)
+  4. Check result message
+This creates videos that are easy to follow and review.
 
 PHASE 6: EXECUTION & REPORTING - Run Tests and Report
 - Install Playwright if needed: npm install -D @playwright/test
@@ -187,30 +341,106 @@ Begin by running 'git diff HEAD~1' to discover what changed in this PR. Then pro
       await appendScratchpadEntry(context.scratchpadPath, 'Starting QA analysis and testing...');
       const mcpServers = await loadMcpServers(context.dir);
 
+      // ========== DIAGNOSTIC LOGGING: Validate SDK Environment ==========
+      consola.info('[qa] PRE-SDK DIAGNOSTICS:');
+
+      // 1. Check environment variables
+      const envVars = {
+        CLAUDE_API_KEY: process.env.CLAUDE_API_KEY ? `present (${process.env.CLAUDE_API_KEY.substring(0, 8)}...)` : 'MISSING',
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? `present (${process.env.ANTHROPIC_API_KEY.substring(0, 8)}...)` : 'not set',
+        GITHUB_TOKEN: process.env.GITHUB_TOKEN ? 'present' : 'MISSING',
+        NODE_ENV: process.env.NODE_ENV || 'not set',
+        CI: process.env.CI || 'not set',
+        HOME: process.env.HOME || 'not set',
+      };
+      consola.info('[qa] Environment variables:', envVars);
+      await appendScratchpadEntry(context.scratchpadPath, `Env check: ${JSON.stringify(envVars, null, 2)}`);
+
+      // 2. Check working directory and filesystem
+      const fs = await import('node:fs/promises');
+      try {
+        const dirContents = await fs.readdir(context.dir);
+        consola.info('[qa] Working directory contents:', dirContents.slice(0, 10));
+        await appendScratchpadEntry(context.scratchpadPath, `CWD: ${context.dir}, Files: ${dirContents.length}`);
+      } catch (err) {
+        consola.error('[qa] Failed to read working directory:', err);
+        await appendScratchpadEntry(context.scratchpadPath, `ERROR: Cannot read CWD - ${err}`);
+      }
+
+      // 3. Check if SDK package is available
+      try {
+        const sdkPath = require.resolve('@anthropic-ai/claude-agent-sdk');
+        consola.info('[qa] SDK package resolved at:', sdkPath);
+        await appendScratchpadEntry(context.scratchpadPath, `SDK found: ${sdkPath}`);
+      } catch (err) {
+        consola.error('[qa] SDK package NOT FOUND:', err);
+        await appendScratchpadEntry(context.scratchpadPath, `ERROR: SDK not found - ${err}`);
+      }
+
+      // 4. Check TTY availability
+      const ttyStatus = {
+        stdin_isTTY: process.stdin.isTTY || false,
+        stdout_isTTY: process.stdout.isTTY || false,
+        stderr_isTTY: process.stderr.isTTY || false,
+      };
+      consola.info('[qa] TTY status:', ttyStatus);
+      await appendScratchpadEntry(context.scratchpadPath, `TTY: ${JSON.stringify(ttyStatus)}`);
+
+      // 5. Node version and platform
+      const systemInfo = {
+        nodeVersion: process.version,
+        platform: process.platform,
+        arch: process.arch,
+      };
+      consola.info('[qa] System info:', systemInfo);
+      await appendScratchpadEntry(context.scratchpadPath, `System: ${JSON.stringify(systemInfo)}`);
+
+      consola.info('[qa] Starting SDK query() call...');
+      await appendScratchpadEntry(context.scratchpadPath, 'Calling SDK query()...');
+      // ========== END DIAGNOSTIC LOGGING ==========
+
       // Start the query with QA-focused options
-      const result = query({
-        prompt:
-          'Review this pull request by analyzing changes, setting up the project, writing Playwright tests, and reporting results.',
-        options: {
-          cwd: context.dir,
-          permissionMode: 'bypassPermissions', // Fully autonomous
-          allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
-          systemPrompt,
-          model: 'claude-sonnet-4-5-20250929',
-          maxTurns: 100, // QA might need more turns (setup, test writing, retry)
-          abortController,
-          settingSources: [],
-          mcpServers,
-        },
-      });
+      let result;
+      try {
+        result = query({
+          prompt:
+            'Review this pull request by analyzing changes, setting up the project, writing Playwright tests, and reporting results.',
+          options: {
+            cwd: context.dir,
+            permissionMode: 'bypassPermissions', // Fully autonomous
+            allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
+            systemPrompt,
+            model: 'claude-sonnet-4-5-20250929',
+            maxTurns: 100, // QA might need more turns (setup, test writing, retry)
+            abortController,
+            settingSources: [],
+            mcpServers,
+          },
+        });
+        consola.info('[qa] SDK query() call succeeded, generator created');
+        await appendScratchpadEntry(context.scratchpadPath, 'SDK query() succeeded');
+      } catch (error) {
+        consola.error('[qa] SDK query() call FAILED:', error);
+        await appendScratchpadEntry(context.scratchpadPath, `FATAL: SDK query() failed - ${error}`);
+        throw new Error(`Failed to initialize SDK query: ${error instanceof Error ? error.message : String(error)}`);
+      }
 
       // Stream messages and collect results
       const messages: SDKMessage[] = [];
       let finalResult: SDKResultMessage | null = null;
       let turnCount = 0;
 
-      for await (const message of result) {
-        messages.push(message);
+      consola.info('[qa] SDK query() returned, starting message stream...');
+      await appendScratchpadEntry(context.scratchpadPath, 'SDK initialized, receiving messages...');
+
+      try {
+        for await (const message of result) {
+          messages.push(message);
+
+          // Log each message type for debugging
+          if (turnCount === 0) {
+            consola.info(`[qa] First message received: type=${message.type}`);
+          }
 
         // Log assistant messages to scratchpad (truncated) and detailed logger
         if (message.type === 'assistant') {
@@ -257,6 +487,14 @@ Begin by running 'git diff HEAD~1' to discover what changed in this PR. Then pro
           finalResult = message;
         }
       }
+      } catch (streamError) {
+        consola.error('[qa] Error during message streaming:', streamError);
+        await appendScratchpadEntry(context.scratchpadPath, `FATAL: Message streaming failed - ${streamError}`);
+        throw new Error(`SDK message stream failed: ${streamError instanceof Error ? streamError.message : String(streamError)}`);
+      }
+
+      consola.info(`[qa] Message stream complete, received ${messages.length} messages`);
+      await appendScratchpadEntry(context.scratchpadPath, `Received ${messages.length} messages from SDK`);
 
       clearTimeout(timeoutId);
 
