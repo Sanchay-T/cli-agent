@@ -399,6 +399,19 @@ Begin by running 'git diff HEAD~1' to discover what changed in this PR. Then pro
       await appendScratchpadEntry(context.scratchpadPath, 'Calling SDK query()...');
       // ========== END DIAGNOSTIC LOGGING ==========
 
+      // ========== CRITICAL FIX: Clean environment variables ==========
+      // The Claude CLI subprocess inherits environment variables from the parent process.
+      // In GitHub Actions (and other CI environments), NODE_OPTIONS and VSCODE_INSPECTOR_OPTIONS
+      // cause the subprocess to crash with exit code 1 when it tries to attach to debuggers.
+      // Reference: https://github.com/anthropics/claude-code/issues/4619
+      const cleanEnv = { ...process.env };
+      delete cleanEnv.NODE_OPTIONS;
+      delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
+
+      consola.info('[qa] Environment cleaned for subprocess');
+      await appendScratchpadEntry(context.scratchpadPath, 'Environment cleaned: removed NODE_OPTIONS, VSCODE_INSPECTOR_OPTIONS');
+      // ========== END ENVIRONMENT CLEANING ==========
+
       // Start the query with QA-focused options
       let result;
       try {
@@ -407,6 +420,7 @@ Begin by running 'git diff HEAD~1' to discover what changed in this PR. Then pro
             'Review this pull request by analyzing changes, setting up the project, writing Playwright tests, and reporting results.',
           options: {
             cwd: context.dir,
+            env: cleanEnv, // Pass cleaned environment to subprocess
             permissionMode: 'bypassPermissions', // Fully autonomous
             allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
             systemPrompt,

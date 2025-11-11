@@ -54,11 +54,18 @@ Instructions:
       await appendScratchpadEntry(context.scratchpadPath, 'Starting Claude Agent SDK query...');
       const mcpServers = await loadMcpServers(context.dir);
 
+      // Clean environment variables to prevent subprocess crashes
+      // Reference: https://github.com/anthropics/claude-code/issues/4619
+      const cleanEnv = { ...process.env };
+      delete cleanEnv.NODE_OPTIONS;
+      delete cleanEnv.VSCODE_INSPECTOR_OPTIONS;
+
       // Start the query with appropriate options
       const result = query({
         prompt: context.prompt,
         options: {
           cwd: context.dir,
+          env: cleanEnv, // Pass cleaned environment to subprocess
           permissionMode: 'bypassPermissions', // Fully autonomous
           allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
           systemPrompt,
