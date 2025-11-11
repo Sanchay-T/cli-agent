@@ -19,6 +19,7 @@ import {
   commitAll,
   createWorktree,
   ensureCleanRepo,
+  ensureGitHubRepo,
   getRepoInfo,
   getRepoRoot,
   makeTaskId,
@@ -64,9 +65,30 @@ const TODO_FILENAME = 'todo.md';
 
 export async function runOb1(options: OrchestratorOptions): Promise<OrchestratorSummary> {
   ensureEnvLoaded();
-  assertRequiredEnv();
 
-  const repoDir = await getRepoRoot(options.repo);
+  // Determine which agents will be used
+  const requestedAgents = options.agents?.length
+    ? options.agents.filter((agent): agent is AgentName => (ALL_AGENTS as string[]).includes(agent))
+    : [...ALL_AGENTS];
+
+  // Only validate env keys for agents that will actually be used
+  const { assertAgentEnv } = await import('./util/env.js');
+  assertAgentEnv(requestedAgents);
+
+  // Check if repo is a GitHub URL
+  let repoDir: string;
+  if (options.repo && options.repo.includes('github.com')) {
+    // GitHub URL provided - ensure it exists and clone if necessary
+    const githubToken = process.env.GITHUB_TOKEN;
+    if (!githubToken) {
+      throw new Error('GITHUB_TOKEN is required when using a GitHub repository URL');
+    }
+    repoDir = await ensureGitHubRepo(options.repo, githubToken);
+  } else {
+    // Local path or no repo specified - use existing logic
+    repoDir = await getRepoRoot(options.repo);
+  }
+
   await ensureCleanRepo(repoDir, options.allowDirty);
 
   const taskId = makeTaskId();
@@ -76,9 +98,7 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
   const workRoot = path.resolve(options.workRoot ?? 'work');
   await ensureDir(workRoot);
 
-  const requestedAgents = options.agents?.length
-    ? options.agents.filter((agent): agent is AgentName => (ALL_AGENTS as string[]).includes(agent))
-    : [...ALL_AGENTS];
+  // requestedAgents already determined above for env validation
   if (requestedAgents.length === 0) {
     throw new Error('No valid agents selected.');
   }
@@ -117,6 +137,7 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
       scratchpadPath,
       todoPath,
       taskId,
+      runRoot,
     });
   }
 

@@ -10,6 +10,14 @@ const REQUIRED_ENV_KEYS = [
   'GITHUB_TOKEN',
 ] as const;
 
+// Map agents to their required keys
+export const AGENT_ENV_KEYS: Record<string, string[]> = {
+  claude: ['CLAUDE_API_KEY'],
+  codex: ['CODEX_CLI_KEY', 'OPENAI_API_KEY'],
+  cursor: ['CURSOR_API_KEY'],
+  qa: ['CLAUDE_API_KEY'], // QA agent only needs Claude API key
+};
+
 type RequiredEnvKey = (typeof REQUIRED_ENV_KEYS)[number];
 
 type EnvCheckResult = {
@@ -38,13 +46,33 @@ export function validateEnvKeys(keys: readonly RequiredEnvKey[] = REQUIRED_ENV_K
   return keys.map((key) => ({ key, present: Boolean(process.env[key]) }));
 }
 
-export function assertRequiredEnv(keys: readonly RequiredEnvKey[] = REQUIRED_ENV_KEYS): void {
-  const results = validateEnvKeys(keys);
+export function assertRequiredEnv(keys?: readonly RequiredEnvKey[]): void {
+  // If no keys specified, check all (for backwards compatibility)
+  const keysToCheck = keys || REQUIRED_ENV_KEYS;
+  const results = validateEnvKeys(keysToCheck);
   const missing = results.filter((result) => !result.present);
   if (missing.length > 0) {
     const missingKeys = missing.map((item) => item.key).join(', ');
     throw new Error(`Missing required environment variables: ${missingKeys}`);
   }
+}
+
+export function assertAgentEnv(agents: string[]): void {
+  // Get unique keys needed for the selected agents
+  const requiredKeys = new Set<string>();
+
+  for (const agent of agents) {
+    const keys = AGENT_ENV_KEYS[agent];
+    if (keys) {
+      keys.forEach((key) => requiredKeys.add(key));
+    }
+  }
+
+  // Always require GITHUB_TOKEN
+  requiredKeys.add('GITHUB_TOKEN');
+
+  // Validate only the keys needed for selected agents
+  assertRequiredEnv(Array.from(requiredKeys) as RequiredEnvKey[]);
 }
 
 export async function runDoctor(): Promise<void> {

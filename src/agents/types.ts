@@ -1,4 +1,4 @@
-export type AgentName = 'codex' | 'claude' | 'cursor';
+export type AgentName = 'codex' | 'claude' | 'cursor' | 'qa';
 
 export type AgentContext = {
   name: AgentName;
@@ -8,6 +8,7 @@ export type AgentContext = {
   scratchpadPath: string;
   todoPath: string;
   taskId: string;
+  runRoot: string; // Root directory for run artifacts (for detailed logging)
 };
 
 export type AgentRunResult = {

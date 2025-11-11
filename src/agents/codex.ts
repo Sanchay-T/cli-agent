@@ -2,6 +2,7 @@ import { consola } from 'consola';
 import { Codex } from '@openai/codex-sdk';
 import type { ThreadEvent, Usage, ThreadItem } from '@openai/codex-sdk';
 import { appendScratchpadEntry, appendTodo } from '../util/fs.js';
+import { AgentLogger } from '../util/agent-logger.js';
 import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js';
 
 export class CodexRunner implements AgentRunner {
@@ -14,9 +15,16 @@ export class CodexRunner implements AgentRunner {
   async run(context: AgentContext): Promise<AgentRunResult> {
     consola.info(`[codex] Starting autonomous agent for task: ${context.prompt}`);
 
+    // Initialize detailed logger
+    const logger = new AgentLogger(context.name, context.taskId, context.runRoot);
+    await logger.init();
+    await logger.logStart(context.prompt);
+
     // Initialize scratchpad
     await appendScratchpadEntry(context.scratchpadPath, `Task: ${context.prompt}`);
     await appendTodo(context.todoPath, 'Initialize Codex Agent SDK', false);
+
+    const startTime = Date.now();
 
     // Set up timeout (default 10 minutes)
     const timeoutMs = 600000; // 10 minutes
@@ -111,6 +119,8 @@ export class CodexRunner implements AgentRunner {
                   context.scratchpadPath,
                   `Response: ${preview}${event.item.text.length > 150 ? '...' : ''}`,
                 );
+                // Log full thought to detailed logger
+                await logger.logThought(turnCount, event.item.text);
               } else if (event.item.type === 'file_change') {
                 const changes = event.item.changes
                   .map((c) => `${c.kind} ${c.path}`)
@@ -119,10 +129,27 @@ export class CodexRunner implements AgentRunner {
                   context.scratchpadPath,
                   `Files changed: ${changes}`,
                 );
+                // Log file change as tool call
+                await logger.logToolCall(turnCount, 'file_change', {
+                  changes: event.item.changes.map((c: any) => ({
+                    kind: c.kind,
+                    path: c.path,
+                  })),
+                });
+                await logger.logToolResult(turnCount, 'file_change', true, changes);
               } else if (event.item.type === 'command_execution') {
                 await appendScratchpadEntry(
                   context.scratchpadPath,
                   `Command completed with exit code: ${event.item.exit_code ?? 'N/A'}`,
+                );
+                // Log command as tool call
+                await logger.logToolCall(turnCount, 'command', { command: event.item.command });
+                await logger.logToolResult(
+                  turnCount,
+                  'command',
+                  event.item.exit_code === 0,
+                  event.item.exit_code === 0 ? `Exit code: ${event.item.exit_code}` : undefined,
+                  event.item.exit_code !== 0 ? `Exit code: ${event.item.exit_code}` : undefined,
                 );
               }
               break;
@@ -202,15 +229,43 @@ export class CodexRunner implements AgentRunner {
         consola.info(`[codex] Total tokens: ${totalTokens.toLocaleString()}`);
       }
 
+      // Log completion to detailed logger
+      const duration_ms = Date.now() - startTime;
+      let cost_usd: number | undefined;
+      if (result.usage) {
+        const inputCost = ((result.usage.input_tokens - result.usage.cached_input_tokens) * 0.01) / 1000;
+        const cachedCost = (result.usage.cached_input_tokens * 0.0025) / 1000;
+        const outputCost = (result.usage.output_tokens * 0.03) / 1000;
+        cost_usd = inputCost + cachedCost + outputCost;
+      }
+
+      await logger.logComplete({
+        turns: result.turnCount,
+        duration_ms,
+        cost_usd,
+        success: true,
+        summary,
+      });
+
       return {
         agent: context.name,
         summary,
         notes,
       };
     } catch (error) {
-      // Log error to scratchpad
+      // Log error to scratchpad and detailed logger
       const errorMessage = error instanceof Error ? error.message : String(error);
       await appendScratchpadEntry(context.scratchpadPath, `Error: ${errorMessage}`);
+      await logger.logError(errorMessage);
+
+      // Log failed completion
+      const duration_ms = Date.now() - startTime;
+      await logger.logComplete({
+        turns: 0,
+        duration_ms,
+        success: false,
+        summary: `Error: ${errorMessage}`,
+      });
 
       throw error;
     }
