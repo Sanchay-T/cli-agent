@@ -44,7 +44,7 @@ program
   .option('-k <count>', 'Number of agents to run in parallel (max 3)')
   .option('--repo <repo>', 'Target repository (URL or local path). Defaults to current repo.')
   .option('--base <branch>', 'Base branch to start from', 'main')
-  .option('--agents <agents>', 'Comma-separated list of agents to run (codex,claude,cursor)')
+  .option('--agents <agents>', 'Comma-separated list of agents to run (codex,claude,cursor,qa)')
   .option('--dry', 'Dry run: skip pushing commits and creating PRs')
   .option('--allow-dirty', 'Allow running with a dirty repository state')
   .option('--timeout-ms <timeout>', 'Per-agent timeout in milliseconds')

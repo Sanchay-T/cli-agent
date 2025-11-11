@@ -1,4 +1,4 @@
-export type AgentName = 'codex' | 'claude' | 'cursor';
+export type AgentName = 'codex' | 'claude' | 'cursor' | 'qa';
 
 export type AgentContext = {
   name: AgentName;

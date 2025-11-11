@@ -1,0 +1,179 @@
+name: QA Agent - Automated PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  qa-review:
+    name: QA Agent Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # For posting comments
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0  # Full history for git diff
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install project dependencies
+        run: |
+          if [ -f package.json ]; then
+            npm install
+          fi
+
+      - name: Install Playwright
+        run: |
+          npm install -g playwright @playwright/test
+          npx playwright install --with-deps chromium
+
+      - name: Clone and build ob1 CLI
+        run: |
+          cd /tmp
+          git clone https://github.com/Sanchay-T/cli-agent.git ob1
+          cd ob1
+          npm install
+          npm run build
+          npm link
+
+      - name: Run QA Agent
+        id: qa-agent
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd $GITHUB_WORKSPACE
+
+          # Run QA agent with the 'qa' agent type
+          npx ob1 -m "Review this PR" -k 1 --agents qa --allow-dirty || echo "QA_FAILED=true" >> $GITHUB_ENV
+
+          # Check if tests were created and run
+          if [ -d "test-results" ]; then
+            echo "QA_TESTS_RUN=true" >> $GITHUB_ENV
+          fi
+
+      - name: Upload test videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-test-videos-pr-${{ github.event.pull_request.number }}
+          path: |
+            test-results/**/*.webm
+            test-results/**/*.mp4
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-test-screenshots-pr-${{ github.event.pull_request.number }}
+          path: |
+            test-results/**/*.png
+            test-results/**/*.jpg
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-playwright-report-pr-${{ github.event.pull_request.number }}
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload test files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-test-files-pr-${{ github.event.pull_request.number }}
+          path: |
+            tests/**/*.spec.ts
+            tests/**/*.spec.js
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Post QA results to PR
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+          REPO_NAME: ${{ github.repository }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = process.env.PR_NUMBER;
+            const runId = process.env.RUN_ID;
+            const repo = process.env.REPO_NAME.split('/');
+            const owner = repo[0];
+            const repoName = repo[1];
+
+            const qaFailed = process.env.QA_FAILED === 'true';
+            const testsRun = process.env.QA_TESTS_RUN === 'true';
+
+            const artifactsUrl = `https://github.com/${owner}/${repoName}/actions/runs/${runId}`;
+
+            let comment = `## 🤖 QA Agent Review\n\n`;
+
+            if (qaFailed) {
+              comment += `**Status**: ⚠️ QA agent encountered issues\n\n`;
+              comment += `The QA agent was unable to complete the review. Check the [workflow logs](${artifactsUrl}) for details.\n\n`;
+            } else if (testsRun) {
+              comment += `**Status**: ✅ QA review completed\n\n`;
+              comment += `### Test Artifacts\n`;
+              comment += `- 📹 [Test Videos](${artifactsUrl}#artifacts)\n`;
+              comment += `- 📸 [Screenshots](${artifactsUrl}#artifacts)\n`;
+              comment += `- 📊 [Playwright Report](${artifactsUrl}#artifacts)\n`;
+              comment += `- 📝 [Test Files](${artifactsUrl}#artifacts)\n\n`;
+              comment += `### How to View\n`;
+              comment += `1. Click on any artifact link above\n`;
+              comment += `2. Download the artifact ZIP file\n`;
+              comment += `3. Extract and view the test results\n\n`;
+              comment += `> **Note**: Test videos show the actual feature working in a browser.\n`;
+            } else {
+              comment += `**Status**: ✅ QA agent completed\n\n`;
+              comment += `The QA agent finished its review. Check the [workflow logs](${artifactsUrl}) for the full report.\n\n`;
+            }
+
+            comment += `---\n`;
+            comment += `*Automated QA review by [ob1 QA Agent](https://github.com/Sanchay-T/cli-agent)*`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo: repoName,
+              issue_number: prNumber,
+              body: comment
+            });
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## QA Agent Review Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$QA_FAILED" == "true" ]; then
+            echo "⚠️ QA agent encountered issues during execution." >> $GITHUB_STEP_SUMMARY
+          elif [ "$QA_TESTS_RUN" == "true" ]; then
+            echo "✅ QA agent successfully created and ran tests." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Artifacts Available:" >> $GITHUB_STEP_SUMMARY
+            echo "- Test videos showing feature in action" >> $GITHUB_STEP_SUMMARY
+            echo "- Screenshots of test execution" >> $GITHUB_STEP_SUMMARY
+            echo "- Playwright HTML report" >> $GITHUB_STEP_SUMMARY
+            echo "- Test source code" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ QA agent completed its review." >> $GITHUB_STEP_SUMMARY
+          fi
