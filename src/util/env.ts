@@ -1,6 +1,6 @@
-import { consola } from 'consola';
 import dotenv from 'dotenv';
 import path from 'node:path';
+import { logger } from './logger.js';
 
 const REQUIRED_ENV_KEYS = [
   'CLAUDE_API_KEY',
@@ -49,18 +49,18 @@ export function assertRequiredEnv(keys: readonly RequiredEnvKey[] = REQUIRED_ENV
 
 export async function runDoctor(): Promise<void> {
   const results = validateEnvKeys();
-  consola.info('Environment configuration check');
-  consola.info('--------------------------------');
+  logger.info('Environment configuration check');
+  logger.info('--------------------------------');
   for (const result of results) {
-    consola.info(`${result.present ? '✅' : '❌'} ${result.key}`);
+    logger.info(`${result.present ? '✅' : '❌'} ${result.key}`);
   }
 
   const missing = results.filter((result) => !result.present);
   if (missing.length > 0) {
-    consola.warn('Some environment variables are missing.');
+    logger.warn('Some environment variables are missing.');
     process.exitCode = 1;
   } else {
-    consola.success('All required environment variables are set.');
+    logger.success('All required environment variables are set.');
   }
 }
 
