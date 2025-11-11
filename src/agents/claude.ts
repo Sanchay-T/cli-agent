@@ -3,6 +3,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { appendScratchpadEntry, appendTodo } from '../util/fs.js';
 import { loadMcpServers } from '../util/mcp.js';
+import { AgentLogger } from '../util/agent-logger.js';
 import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js';
 
 export class ClaudeRunner implements AgentRunner {
@@ -15,9 +16,16 @@ export class ClaudeRunner implements AgentRunner {
   async run(context: AgentContext): Promise<AgentRunResult> {
     consola.info(`[claude] Starting autonomous agent for task: ${context.prompt}`);
 
+    // Initialize detailed logger
+    const logger = new AgentLogger(context.name, context.taskId, context.runRoot);
+    await logger.init();
+    await logger.logStart(context.prompt);
+
     // Initialize scratchpad
     await appendScratchpadEntry(context.scratchpadPath, `Task: ${context.prompt}`);
     await appendTodo(context.todoPath, 'Initialize Claude Agent SDK', false);
+
+    const startTime = Date.now();
 
     // Set up timeout (default 10 minutes)
     const timeoutMs = 600000; // 10 minutes
@@ -70,7 +78,7 @@ Instructions:
       for await (const message of result) {
         messages.push(message);
 
-        // Log assistant messages to scratchpad (truncated)
+        // Log assistant messages to scratchpad (truncated) and detailed logger
         if (message.type === 'assistant') {
           turnCount++;
           const content = message.message.content[0];
@@ -80,6 +88,33 @@ Instructions:
               context.scratchpadPath,
               `Turn ${turnCount}: ${preview}${content.text.length > 150 ? '...' : ''}`,
             );
+
+            // Log full thought to detailed logger
+            await logger.logThought(turnCount, content.text);
+          }
+
+          // Log tool calls if present
+          for (const item of message.message.content) {
+            if (item.type === 'tool_use') {
+              await logger.logToolCall(turnCount, item.name, item.input as Record<string, unknown>);
+            }
+          }
+        }
+
+        // Log tool results
+        if (message.type === 'user' && message.message.content) {
+          for (const item of message.message.content) {
+            if (item.type === 'tool_result') {
+              const success = !item.is_error;
+              const result = typeof item.content === 'string' ? item.content : JSON.stringify(item.content);
+              await logger.logToolResult(
+                turnCount,
+                item.tool_use_id || 'unknown',
+                success,
+                success ? result : undefined,
+                success ? undefined : result,
+              );
+            }
           }
         }
 
@@ -141,6 +176,16 @@ Instructions:
       consola.success(`[claude] Task completed in ${finalResult.num_turns} turns`);
       consola.info(`[claude] Cost: $${finalResult.total_cost_usd.toFixed(4)}`);
 
+      // Log completion to detailed logger
+      const duration_ms = Date.now() - startTime;
+      await logger.logComplete({
+        turns: finalResult.num_turns,
+        duration_ms,
+        cost_usd: finalResult.total_cost_usd,
+        success: finalResult.subtype === 'success',
+        summary,
+      });
+
       return {
         agent: context.name,
         summary,
@@ -149,9 +194,19 @@ Instructions:
     } catch (error) {
       clearTimeout(timeoutId);
 
-      // Log error to scratchpad
+      // Log error to scratchpad and detailed logger
       const errorMessage = error instanceof Error ? error.message : String(error);
       await appendScratchpadEntry(context.scratchpadPath, `Error: ${errorMessage}`);
+      await logger.logError(errorMessage);
+
+      // Log failed completion
+      const duration_ms = Date.now() - startTime;
+      await logger.logComplete({
+        turns: 0,
+        duration_ms,
+        success: false,
+        summary: `Error: ${errorMessage}`,
+      });
 
       throw error;
     }

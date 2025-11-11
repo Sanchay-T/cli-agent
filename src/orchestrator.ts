@@ -19,6 +19,7 @@ import {
   commitAll,
   createWorktree,
   ensureCleanRepo,
+  ensureGitHubRepo,
   getRepoInfo,
   getRepoRoot,
   makeTaskId,
@@ -66,7 +67,20 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
   ensureEnvLoaded();
   assertRequiredEnv();
 
-  const repoDir = await getRepoRoot(options.repo);
+  // Check if repo is a GitHub URL
+  let repoDir: string;
+  if (options.repo && options.repo.includes('github.com')) {
+    // GitHub URL provided - ensure it exists and clone if necessary
+    const githubToken = process.env.GITHUB_TOKEN;
+    if (!githubToken) {
+      throw new Error('GITHUB_TOKEN is required when using a GitHub repository URL');
+    }
+    repoDir = await ensureGitHubRepo(options.repo, githubToken);
+  } else {
+    // Local path or no repo specified - use existing logic
+    repoDir = await getRepoRoot(options.repo);
+  }
+
   await ensureCleanRepo(repoDir, options.allowDirty);
 
   const taskId = makeTaskId();
@@ -117,6 +131,7 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
       scratchpadPath,
       todoPath,
       taskId,
+      runRoot,
     });
   }
 

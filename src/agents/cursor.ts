@@ -1,6 +1,7 @@
 import { consola } from 'consola';
 import { simpleGit } from 'simple-git';
 import { appendScratchpadEntry, appendTodo } from '../util/fs.js';
+import { AgentLogger } from '../util/agent-logger.js';
 import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js';
 
 type CursorAgentStatus = 'CREATING' | 'RUNNING' | 'FINISHED' | 'FAILED';
@@ -214,32 +215,55 @@ export class CursorRunner implements AgentRunner {
   async run(context: AgentContext): Promise<AgentRunResult> {
     consola.info(`[cursor] Starting Cursor Cloud agent for task: ${context.prompt}`);
 
+    // Initialize detailed logger
+    const logger = new AgentLogger(context.name, context.taskId, context.runRoot);
+    await logger.init();
+    await logger.logStart(context.prompt);
+
     await appendScratchpadEntry(context.scratchpadPath, `Task: ${context.prompt}`);
     await appendTodo(context.todoPath, 'Initialize Cursor Cloud Agent', false);
 
     const startTime = Date.now();
+    let turnCount = 0;
 
     try {
       // Step 1: Get repository URL
+      turnCount++;
       await appendScratchpadEntry(context.scratchpadPath, 'Detecting GitHub repository...');
+      await logger.logThought(turnCount, 'Detecting GitHub repository from git remote...');
       const repoUrl = await this.getRepositoryUrl(context.dir);
       await appendScratchpadEntry(context.scratchpadPath, `Repository: ${repoUrl}`);
+      await logger.logToolCall(turnCount, 'get_repository_url', { worktreeDir: context.dir });
+      await logger.logToolResult(turnCount, 'get_repository_url', true, repoUrl);
 
       // Step 2: Commit current worktree state (with .ob1 files)
+      turnCount++;
       await appendScratchpadEntry(context.scratchpadPath, 'Committing worktree state...');
+      await logger.logThought(turnCount, 'Committing current worktree state for Cursor to use as base...');
       await this.commitWorktree(context.dir);
+      await logger.logToolCall(turnCount, 'commit_worktree', { worktreeDir: context.dir });
+      await logger.logToolResult(turnCount, 'commit_worktree', true, 'Worktree committed');
 
       // Step 3: Push current worktree as base branch
-      await appendScratchpadEntry(context.scratchpadPath, 'Pushing base branch to GitHub...');
+      turnCount++;
       const baseBranch = `${context.branch}-base`;
+      await appendScratchpadEntry(context.scratchpadPath, 'Pushing base branch to GitHub...');
+      await logger.logThought(turnCount, `Pushing base branch ${baseBranch} to GitHub...`);
       await this.pushBaseBranch(context.dir, context.branch, baseBranch);
       await appendScratchpadEntry(context.scratchpadPath, `Base branch: ${baseBranch}`);
+      await logger.logToolCall(turnCount, 'push_base_branch', {
+        localBranch: context.branch,
+        remoteBranch: baseBranch,
+      });
+      await logger.logToolResult(turnCount, 'push_base_branch', true, `Pushed to ${baseBranch}`);
 
       // Step 4: Launch Cursor agent
+      turnCount++;
       await appendScratchpadEntry(context.scratchpadPath, 'Launching Cursor Cloud agent...');
+      await logger.logThought(turnCount, 'Launching Cursor Cloud agent via API...');
       const cursorBranch = `${context.branch}-cursor`;
 
-      const createResponse = await this.apiRequest<CursorAgent>('POST', '/agents', {
+      const createPayload = {
         prompt: {
           text: context.prompt,
         },
@@ -251,6 +275,13 @@ export class CursorRunner implements AgentRunner {
           branchName: cursorBranch,
           autoCreatePr: false, // We'll handle PR creation in the orchestrator
         },
+      };
+
+      await logger.logToolCall(turnCount, 'cursor_api_create_agent', createPayload);
+      const createResponse = await this.apiRequest<CursorAgent>('POST', '/agents', createPayload);
+      await logger.logToolResult(turnCount, 'cursor_api_create_agent', true, {
+        agentId: createResponse.id,
+        status: createResponse.status,
       });
 
       await appendScratchpadEntry(
@@ -261,11 +292,21 @@ export class CursorRunner implements AgentRunner {
       await appendTodo(context.todoPath, 'Waiting for Cursor to complete', false);
 
       // Step 5: Poll for completion
+      turnCount++;
+      await logger.logThought(turnCount, `Polling Cursor agent ${createResponse.id} for completion...`);
+      await logger.logToolCall(turnCount, 'poll_agent_status', {
+        agentId: createResponse.id,
+        timeoutMs: 600000,
+      });
       const completedAgent = await this.pollAgentStatus(
         createResponse.id,
         context.scratchpadPath,
         600000, // 10 minutes timeout
       );
+      await logger.logToolResult(turnCount, 'poll_agent_status', true, {
+        status: completedAgent.status,
+        summary: completedAgent.summary,
+      });
 
       await appendTodo(context.todoPath, 'Cursor agent completed', true);
       await appendScratchpadEntry(
@@ -274,13 +315,20 @@ export class CursorRunner implements AgentRunner {
       );
 
       // Step 6: Pull Cursor's changes into worktree
+      turnCount++;
       await appendScratchpadEntry(
         context.scratchpadPath,
         'Pulling changes from Cursor branch...',
       );
+      await logger.logThought(turnCount, `Pulling changes from Cursor branch ${cursorBranch}...`);
       await appendTodo(context.todoPath, 'Pulling changes to worktree', false);
 
+      await logger.logToolCall(turnCount, 'pull_cursor_changes', {
+        worktreeDir: context.dir,
+        cursorBranch,
+      });
       await this.pullCursorChanges(context.dir, cursorBranch);
+      await logger.logToolResult(turnCount, 'pull_cursor_changes', true, 'Changes pulled successfully');
 
       await appendTodo(context.todoPath, 'Changes pulled successfully', true);
 
@@ -298,6 +346,15 @@ export class CursorRunner implements AgentRunner {
 
       consola.success(`[cursor] Task completed`);
 
+      // Log completion to detailed logger
+      const duration_ms = Date.now() - startTime;
+      await logger.logComplete({
+        turns: turnCount,
+        duration_ms,
+        success: true,
+        summary: completedAgent.summary || 'Cursor agent completed the task',
+      });
+
       return {
         agent: context.name,
         summary: completedAgent.summary || 'Cursor agent completed the task',
@@ -306,6 +363,16 @@ export class CursorRunner implements AgentRunner {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await appendScratchpadEntry(context.scratchpadPath, `Error: ${errorMessage}`);
+      await logger.logError(errorMessage);
+
+      // Log failed completion
+      const duration_ms = Date.now() - startTime;
+      await logger.logComplete({
+        turns: turnCount,
+        duration_ms,
+        success: false,
+        summary: `Error: ${errorMessage}`,
+      });
 
       throw error;
     }

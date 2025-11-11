@@ -8,6 +8,7 @@ export type AgentContext = {
   scratchpadPath: string;
   todoPath: string;
   taskId: string;
+  runRoot: string; // Root directory for run artifacts (for detailed logging)
 };
 
 export type AgentRunResult = {
