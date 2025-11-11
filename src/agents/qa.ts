@@ -35,6 +35,9 @@ export class QaRunner implements AgentRunner {
       abortController.abort();
     }, timeoutMs);
 
+    // Declare heartbeatInterval outside try/catch so it's accessible in catch block
+    let heartbeatInterval: NodeJS.Timeout | null = null;
+
     try {
       // Create universal QA system prompt
       const systemPrompt = `You are a senior QA engineer responsible for reviewing pull requests through automated testing.
@@ -452,7 +455,7 @@ Begin by running 'git diff HEAD~1' to discover what changed in this PR. Then pro
       let lastLogTime = Date.now();
 
       // Heartbeat to prove process is alive
-      const heartbeatInterval = setInterval(() => {
+      heartbeatInterval = setInterval(() => {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         consola.info(`[qa] ❤️ HEARTBEAT at ${elapsed}s - Messages: ${messageCount}, Turn: ${turnCount}, Alive: true`);
       }, 5000); // Every 5 seconds
@@ -529,7 +532,49 @@ Begin by running 'git diff HEAD~1' to discover what changed in this PR. Then pro
       consola.info(`[qa] Message stream complete, received ${messages.length} messages`);
       await appendScratchpadEntry(context.scratchpadPath, `Received ${messages.length} messages from SDK`);
 
+      // CRITICAL: Clear heartbeat interval to allow process to exit
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        consola.info('[qa] ✓ Heartbeat interval cleared');
+      }
+
       clearTimeout(timeoutId);
+
+      // CRITICAL: Kill any lingering child processes to ensure clean exit
+      // The QA agent spawns: http-server, npm, playwright, chromium
+      // These can prevent the process from exiting even after the agent completes
+      consola.info('[qa] 🧹 Cleaning up child processes...');
+      try {
+        const { execSync } = await import('node:child_process');
+
+        // Kill http-server processes (common dev server)
+        try {
+          execSync("pkill -f 'http-server' || true", { stdio: 'ignore' });
+          consola.info('[qa] ✓ Killed http-server processes');
+        } catch (e) {
+          // Ignore errors - process might not exist
+        }
+
+        // Kill any chromium/playwright browser processes
+        try {
+          execSync("pkill -f 'chromium' || pkill -f 'chrome' || true", { stdio: 'ignore' });
+          consola.info('[qa] ✓ Killed browser processes');
+        } catch (e) {
+          // Ignore errors - process might not exist
+        }
+
+        // Kill any node processes running dev servers on common ports
+        try {
+          execSync("lsof -ti:8000,8080,3000,5000 | xargs kill -9 2>/dev/null || true", { stdio: 'ignore' });
+          consola.info('[qa] ✓ Killed dev servers on common ports');
+        } catch (e) {
+          // Ignore errors - ports might not be in use
+        }
+
+        consola.info('[qa] ✅ Cleanup complete');
+      } catch (cleanupError) {
+        consola.warn('[qa] ⚠️  Cleanup had issues (non-fatal):', cleanupError);
+      }
 
       // Handle missing result
       if (!finalResult) {
@@ -593,7 +638,23 @@ Begin by running 'git diff HEAD~1' to discover what changed in this PR. Then pro
         notes,
       };
     } catch (error) {
+      // CRITICAL: Clear heartbeat interval to allow process to exit
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+      }
       clearTimeout(timeoutId);
+
+      // CRITICAL: Kill any lingering child processes even on error
+      consola.info('[qa] 🧹 Cleaning up child processes (error path)...');
+      try {
+        const { execSync } = await import('node:child_process');
+        execSync("pkill -f 'http-server' || true", { stdio: 'ignore' });
+        execSync("pkill -f 'chromium' || pkill -f 'chrome' || true", { stdio: 'ignore' });
+        execSync("lsof -ti:8000,8080,3000,5000 | xargs kill -9 2>/dev/null || true", { stdio: 'ignore' });
+        consola.info('[qa] ✅ Cleanup complete (error path)');
+      } catch (cleanupError) {
+        consola.warn('[qa] ⚠️  Cleanup had issues (non-fatal):', cleanupError);
+      }
 
       // Log error to scratchpad and detailed logger
       const errorMessage = error instanceof Error ? error.message : String(error);
