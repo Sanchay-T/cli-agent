@@ -1,7 +1,7 @@
-import { consola } from 'consola';
 import { simpleGit } from 'simple-git';
 import { appendScratchpadEntry, appendTodo } from '../util/fs.js';
 import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js';
+import { logger } from '../util/logger.js';
 
 type CursorAgentStatus = 'CREATING' | 'RUNNING' | 'FINISHED' | 'FAILED';
 
@@ -170,7 +170,7 @@ export class CursorRunner implements AgentRunner {
   }
 
   async run(context: AgentContext): Promise<AgentRunResult> {
-    consola.info(`[cursor] Starting Cursor Cloud agent for task: ${context.prompt}`);
+    logger.info(`[cursor] Starting Cursor Cloud agent for task: ${context.prompt}`);
 
     await appendScratchpadEntry(context.scratchpadPath, `Task: ${context.prompt}`);
     await appendTodo(context.todoPath, 'Initialize Cursor Cloud Agent', false);
@@ -254,7 +254,7 @@ export class CursorRunner implements AgentRunner {
         notes.push(`Cursor URL: ${completedAgent.target.url}`);
       }
 
-      consola.success(`[cursor] Task completed`);
+      logger.info(`[cursor] Task completed`);
 
       return {
         agent: context.name,

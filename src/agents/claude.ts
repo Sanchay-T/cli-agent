@@ -1,8 +1,8 @@
-import { consola } from 'consola';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { appendScratchpadEntry, appendTodo } from '../util/fs.js';
 import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js';
+import { logger } from '../util/logger.js';
 
 export class ClaudeRunner implements AgentRunner {
   checkEnv(): void {
@@ -12,7 +12,7 @@ export class ClaudeRunner implements AgentRunner {
   }
 
   async run(context: AgentContext): Promise<AgentRunResult> {
-    consola.info(`[claude] Starting autonomous agent for task: ${context.prompt}`);
+    logger.info(`[claude] Starting autonomous agent for task: ${context.prompt}`);
 
     // Initialize scratchpad
     await appendScratchpadEntry(context.scratchpadPath, `Task: ${context.prompt}`);
@@ -22,7 +22,7 @@ export class ClaudeRunner implements AgentRunner {
     const timeoutMs = 600000; // 10 minutes
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => {
-      consola.warn(`[claude] Timeout reached after ${timeoutMs}ms, aborting...`);
+      logger.warn(`[claude] Timeout reached after ${timeoutMs}ms, aborting...`);
       abortController.abort();
     }, timeoutMs);
 
@@ -135,8 +135,8 @@ Instructions:
         notes.push(`Permission denials: ${finalResult.permission_denials.length}`);
       }
 
-      consola.success(`[claude] Task completed in ${finalResult.num_turns} turns`);
-      consola.info(`[claude] Cost: $${finalResult.total_cost_usd.toFixed(4)}`);
+      logger.info(`[claude] Task completed in ${finalResult.num_turns} turns`);
+      logger.info(`[claude] Cost: $${finalResult.total_cost_usd.toFixed(4)}`);
 
       return {
         agent: context.name,
