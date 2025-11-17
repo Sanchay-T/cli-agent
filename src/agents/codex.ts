@@ -1,9 +1,9 @@
-import { consola } from 'consola';
 import { Codex } from '@openai/codex-sdk';
 import type { ThreadEvent, Usage, ThreadItem } from '@openai/codex-sdk';
 import { appendScratchpadEntry, appendTodo } from '../util/fs.js';
 import { AgentLogger } from '../util/agent-logger.js';
 import { AgentRunner, type AgentContext, type AgentRunResult } from './types.js';
+import { logger } from '../util/logger.js';
 
 export class CodexRunner implements AgentRunner {
   checkEnv(): void {
@@ -13,7 +13,7 @@ export class CodexRunner implements AgentRunner {
   }
 
   async run(context: AgentContext): Promise<AgentRunResult> {
-    consola.info(`[codex] Starting autonomous agent for task: ${context.prompt}`);
+    logger.info(`[codex] Starting autonomous agent for task: ${context.prompt}`);
 
     // Initialize detailed logger
     const logger = new AgentLogger(context.name, context.taskId, context.runRoot);
@@ -222,11 +222,11 @@ export class CodexRunner implements AgentRunner {
         notes.push(`Commands executed: ${commands.length}`);
       }
 
-      consola.success(`[codex] Task completed in ${result.turnCount} turn(s)`);
+      logger.info(`[codex] Task completed in ${result.turnCount} turn(s)`);
       if (result.usage) {
         const totalTokens =
           result.usage.input_tokens + result.usage.output_tokens;
-        consola.info(`[codex] Total tokens: ${totalTokens.toLocaleString()}`);
+        logger.info(`[codex] Total tokens: ${totalTokens.toLocaleString()}`);
       }
 
       // Log completion to detailed logger

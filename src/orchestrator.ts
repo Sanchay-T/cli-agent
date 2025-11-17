@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { consola } from 'consola';
 import ora from 'ora';
 import pLimit from 'p-limit';
 import { simpleGit } from 'simple-git';
@@ -15,6 +14,7 @@ import {
   writeJsonFile,
 } from './util/fs.js';
 import { RunLogger } from './util/run-logger.js';
+import { logger as appLogger } from './util/logger.js';
 import {
   commitAll,
   createWorktree,
@@ -105,16 +105,16 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
 
   const selectedAgents = requestedAgents.slice(0, Math.min(options.k, requestedAgents.length));
   if (selectedAgents.length < options.k) {
-    consola.warn(
+    appLogger.warn(
       `Requested ${options.k} agents but only ${selectedAgents.length} available. Proceeding with available agents.`,
     );
   }
 
   const repoInfo = options.dryRun ? null : await getRepoInfo(repoDir);
-  const logger = new RunLogger(path.join(runRoot, 'run.jsonl'));
+  const runLogger = new RunLogger(path.join(runRoot, 'run.jsonl'));
 
-  consola.start(`Starting ob1 run with agents: ${selectedAgents.join(', ')} (taskId=${taskId})`);
-  await logger.log({ event: 'start', taskId, agents: selectedAgents, message: options.message });
+  appLogger.start(`Starting ob1 run with agents: ${selectedAgents.join(', ')} (taskId=${taskId})`);
+  await runLogger.log({ event: 'start', taskId, agents: selectedAgents, message: options.message });
 
   const agentContexts: AgentContext[] = [];
   for (const agent of selectedAgents) {
@@ -152,7 +152,7 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
         const spinner = ora({ text: `[${context.name}] preparing worktree`, spinner: 'dots' }).start();
         const runner = getAgentRunner(context.name);
         try {
-          await logger.log({ event: 'agent:start', agent: context.name, branch: context.branch });
+          await runLogger.log({ event: 'agent:start', agent: context.name, branch: context.branch });
           runner.checkEnv();
           spinner.text = `[${context.name}] running agent`;
           const result = await runner.run(context);
@@ -238,7 +238,7 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
             changedFiles,
           };
           executionSummaries.push(summary);
-          await logger.log({ event: 'agent:success', agent: context.name, branch: context.branch, commitSha, prUrl });
+          await runLogger.log({ event: 'agent:success', agent: context.name, branch: context.branch, commitSha, prUrl });
           spinner.succeed(`[${context.name}] completed${prUrl ? ` → ${chalk.cyan(prUrl)}` : ''}`);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -249,7 +249,7 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
             changedFiles: 0,
             error: message,
           });
-          await logger.log({ event: 'agent:error', agent: context.name, branch: context.branch, error: message });
+          await runLogger.log({ event: 'agent:error', agent: context.name, branch: context.branch, error: message });
           spinner.fail(`[${context.name}] failed: ${message}`);
           if (!failure) {
             failure = error;
@@ -275,14 +275,14 @@ export async function runOb1(options: OrchestratorOptions): Promise<Orchestrator
   ).catch(() => undefined);
 
   await writeJsonFile(path.join(runRoot, 'summary.json'), summary);
-  await logger.log({
+  await runLogger.log({
     event: failure ? 'finish:with-error' : 'finish',
     taskId,
     agents: executionSummaries.map((agent) => agent.agent),
   });
 
   for (const agent of executionSummaries) {
-    consola.info(
+    appLogger.info(
       `${chalk.bold(agent.agent)} → ${agent.prUrl ? chalk.cyan(agent.prUrl) : agent.error ? chalk.red(agent.error) : 'dry run'}`,
     );
   }

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { consola } from 'consola';
 import { createRequire } from 'node:module';
 import { runOb1, type OrchestratorOptions } from './orchestrator.js';
 import { runDoctor } from './util/env.js';
+import { logger } from './util/logger.js';
 
 const require = createRequire(import.meta.url);
 const packageJson = require('../package.json') as { version?: string };
@@ -34,7 +34,7 @@ program
     try {
       await runDoctor();
     } catch (error) {
-      consola.error(error);
+      logger.error(error);
       process.exitCode = 1;
     }
   });
@@ -53,14 +53,14 @@ program
     const { message, k, repo, base, dry, agents, allowDirty, timeoutMs, workRoot } = options;
 
     if (!message) {
-      consola.error('The --message option is required.');
+      logger.error('The --message option is required.');
       process.exit(1);
       return;
     }
 
     const parsedK = k ? Number.parseInt(k, 10) : undefined;
     if (!parsedK || Number.isNaN(parsedK) || parsedK <= 0) {
-      consola.error('The -k option must be a positive integer.');
+      logger.error('The -k option must be a positive integer.');
       process.exit(1);
       return;
     }
@@ -80,7 +80,7 @@ program
     try {
       await runOb1(opts);
     } catch (error) {
-      consola.error(error);
+      logger.error(error);
       process.exitCode = 1;
     }
   });
